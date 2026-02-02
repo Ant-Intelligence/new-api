@@ -259,6 +259,32 @@ type GeminiFileData struct {
 	FileUri  string `json:"fileUri,omitempty"`
 }
 
+// UnmarshalJSON custom unmarshaler for GeminiFileData to support snake_case and camelCase
+func (g *GeminiFileData) UnmarshalJSON(data []byte) error {
+	type Alias GeminiFileData
+	var aux struct {
+		Alias
+		MimeTypeSnake string `json:"mime_type,omitempty"`
+		FileUriSnake  string `json:"file_uri,omitempty"`
+	}
+
+	if err := common.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*g = GeminiFileData(aux.Alias)
+
+	// Prioritize snake_case if present
+	if aux.MimeTypeSnake != "" {
+		g.MimeType = aux.MimeTypeSnake
+	}
+	if aux.FileUriSnake != "" {
+		g.FileUri = aux.FileUriSnake
+	}
+
+	return nil
+}
+
 type GeminiPart struct {
 	Text             string                  `json:"text,omitempty"`
 	Thought          bool                    `json:"thought,omitempty"`
@@ -274,13 +300,14 @@ type GeminiPart struct {
 	CodeExecutionResult *GeminiPartCodeExecutionResult `json:"codeExecutionResult,omitempty"`
 }
 
-// UnmarshalJSON custom unmarshaler for GeminiPart to support snake_case and camelCase for InlineData
+// UnmarshalJSON custom unmarshaler for GeminiPart to support snake_case and camelCase for InlineData and FileData
 func (p *GeminiPart) UnmarshalJSON(data []byte) error {
 	// Alias to avoid recursion during unmarshalling
 	type Alias GeminiPart
 	var aux struct {
 		Alias
 		InlineDataSnake *GeminiInlineData `json:"inline_data,omitempty"` // snake_case variant
+		FileDataSnake   *GeminiFileData   `json:"file_data,omitempty"`   // snake_case variant
 	}
 
 	if err := common.Unmarshal(data, &aux); err != nil {
@@ -295,6 +322,13 @@ func (p *GeminiPart) UnmarshalJSON(data []byte) error {
 		p.InlineData = aux.InlineDataSnake
 	} else if aux.InlineData != nil { // Fallback to camelCase from Alias
 		p.InlineData = aux.InlineData
+	}
+
+	// Prioritize snake_case for FileData if present
+	if aux.FileDataSnake != nil {
+		p.FileData = aux.FileDataSnake
+	} else if aux.FileData != nil { // Fallback to camelCase from Alias
+		p.FileData = aux.FileData
 	}
 	// Other fields like Text, FunctionCall etc. are already populated via aux.Alias
 
