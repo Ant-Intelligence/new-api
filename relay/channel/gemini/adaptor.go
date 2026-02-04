@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/QuantumNous/new-api/types"
@@ -30,9 +31,31 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 					request.Contents[0].Role = "user"
 				}
 			}
-			for _, part := range content.Parts {
+			for j, part := range content.Parts {
 				if part.FileData != nil {
-					if part.FileData.MimeType == "" && strings.Contains(part.FileData.FileUri, "www.youtube.com") {
+					// Check if file_uri is an HTTP/HTTPS URL that needs to be downloaded
+					if part.FileData.FileUri != "" && strings.HasPrefix(part.FileData.FileUri, "http") {
+						// Download the file and convert to base64
+						fileData, err := service.GetFileBase64FromUrl(c, part.FileData.FileUri, "downloading file for Gemini")
+						if err != nil {
+							return nil, fmt.Errorf("failed to download file from uri '%s': %w", part.FileData.FileUri, err)
+						}
+
+						// Determine MIME type: use provided one or detected one
+						mimeType := part.FileData.MimeType
+						if mimeType == "" {
+							mimeType = fileData.MimeType
+						}
+
+						// Convert FileData to InlineData
+						request.Contents[i].Parts[j].InlineData = &dto.GeminiInlineData{
+							MimeType: mimeType,
+							Data:     fileData.Base64Data,
+						}
+						// Clear FileData since we've converted it to InlineData
+						request.Contents[i].Parts[j].FileData = nil
+					} else if part.FileData.MimeType == "" && strings.Contains(part.FileData.FileUri, "www.youtube.com") {
+						// Handle YouTube URLs (keep as FileData)
 						part.FileData.MimeType = "video/webm"
 					}
 				}
